@@ -12,7 +12,7 @@ This repo uses PyTorch.
 python vae.py --train --epochs 10 --predict
 ```
 
-![](/doc/vae.png)
+![](doc/vae.png)
 
 ## Conditional VAE
 
@@ -20,4 +20,4 @@ python vae.py --train --epochs 10 --predict
 python cvae.py --train --epochs 10 --predict
 ```
 
-![](/doc/cvae.png)
+![](doc/cvae.png)
