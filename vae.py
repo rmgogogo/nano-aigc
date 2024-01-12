@@ -124,7 +124,7 @@ def predict(net):
         x = net.generate(16)
 
     images = x.cpu()
-    fig, axes = plt.subplots(4, 4, figsize=(8, 8))
+    fig, axes = plt.subplots(4, 4, figsize=(4, 4))
     for i, ax in enumerate(axes.flat):
         ax.imshow(images[i].squeeze(0).numpy(), cmap='gray')
         ax.axis("off")

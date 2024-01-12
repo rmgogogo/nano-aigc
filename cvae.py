@@ -132,7 +132,7 @@ def predict(net):
 
     x = x.cpu()
     y = y.cpu()
-    fig, axes = plt.subplots(4, 4, figsize=(8, 8))
+    fig, axes = plt.subplots(4, 4, figsize=(4, 4))
     for i, ax in enumerate(axes.flat):
         ax.imshow(x[i].squeeze(0).numpy(), cmap='gray')
         ax.set_title(f'{y[i]}')
