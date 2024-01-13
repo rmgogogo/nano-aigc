@@ -51,7 +51,11 @@ class UNet(nn.Module):
     def __init__(self, n_steps=1000, time_emb_dim=100):
         super(UNet, self).__init__()
 
+        # Time Embedding, type of positional embedding
+        self.time_embed = nn.Embedding(n_steps, time_emb_dim)
+
         # First half
+        self.te1 = nn.Linear(time_emb_dim, 1)
         self.b1 = nn.Sequential(
             ConvBlock((1, 28, 28), 10),
             ConvBlock((10, 28, 28), 10),
@@ -59,6 +63,7 @@ class UNet(nn.Module):
         )
         self.down1 = nn.Conv2d(10, 10, 4, 2, 1)
 
+        self.te2 = nn.Linear(time_emb_dim, 10)
         self.b2 = nn.Sequential(
             ConvBlock((10, 14, 14), 20),
             ConvBlock((20, 14, 14), 20),
@@ -66,6 +71,7 @@ class UNet(nn.Module):
         )
         self.down2 = nn.Conv2d(20, 20, 4, 2, 1)
 
+        self.te3 = nn.Linear(time_emb_dim, 20)
         self.b3 = nn.Sequential(
             ConvBlock((20, 7, 7), 40),
             ConvBlock((40, 7, 7), 40),
@@ -78,6 +84,7 @@ class UNet(nn.Module):
         )
 
         # Bottleneck
+        self.te_mid = nn.Linear(time_emb_dim, 40)
         self.b_mid = nn.Sequential(
             ConvBlock((40, 3, 3), 20),
             ConvBlock((20, 3, 3), 20),
@@ -91,6 +98,7 @@ class UNet(nn.Module):
             nn.ConvTranspose2d(40, 40, 2, 1)
         )
 
+        self.te4 = nn.Linear(time_emb_dim, 80)
         self.b4 = nn.Sequential(
             ConvBlock((80, 7, 7), 40),
             ConvBlock((40, 7, 7), 20),
@@ -98,6 +106,7 @@ class UNet(nn.Module):
         )
 
         self.up2 = nn.ConvTranspose2d(20, 20, 4, 2, 1)
+        self.te5 = nn.Linear(time_emb_dim, 40)
         self.b5 = nn.Sequential(
             ConvBlock((40, 14, 14), 20),
             ConvBlock((20, 14, 14), 10),
@@ -105,6 +114,7 @@ class UNet(nn.Module):
         )
 
         self.up3 = nn.ConvTranspose2d(10, 10, 4, 2, 1)
+        self.te_out = nn.Linear(time_emb_dim, 20)
         self.b_out = nn.Sequential(
             ConvBlock((20, 28, 28), 10),
             ConvBlock((10, 28, 28), 10),
@@ -115,22 +125,22 @@ class UNet(nn.Module):
 
     def forward(self, x, t):
         # x is (N, 1, 28, 28)
-        # t = self.time_embed(t) # (N, time-embedding-features)
+        t = self.time_embed(t) # (N, time-embedding-features)
         n = len(x)
-        out1 = self.b1(x)   # (N, 1, 28, 28)
-        out2 = self.b2(self.down1(out1))  # (N, 12, 14, 14)
-        out3 = self.b3(self.down2(out2))  # (N, 40, 7, 7)
+        out1 = self.b1(x + self.te1(t).reshape(n, -1, 1, 1))   # (N, 1, 28, 28)
+        out2 = self.b2(self.down1(out1) + self.te2(t).reshape(n, -1, 1, 1))  # (N, 12, 14, 14)
+        out3 = self.b3(self.down2(out2) + self.te3(t).reshape(n, -1, 1, 1))  # (N, 40, 7, 7)
 
-        out_mid = self.b_mid(self.down3(out3))  # (N, 40, 3, 3)
+        out_mid = self.b_mid(self.down3(out3) + + self.te_mid(t).reshape(n, -1, 1, 1))  # (N, 40, 3, 3)
 
         out4 = torch.cat((out3, self.up1(out_mid)), dim=1)  # (N, 80, 7, 7)
-        out4 = self.b4(out4)  # (N, 20, 7, 7)
+        out4 = self.b4(out4 + self.te4(t).reshape(n, -1, 1, 1))  # (N, 20, 7, 7)
 
         out5 = torch.cat((out2, self.up2(out4)), dim=1)  # (N, 40, 14, 14)
-        out5 = self.b5(out5)  # (N, 10, 14, 14)
+        out5 = self.b5(out5 + self.te5(t).reshape(n, -1, 1, 1))  # (N, 10, 14, 14)
 
         out = torch.cat((out1, self.up3(out5)), dim=1)  # (N, 20, 28, 28)
-        out = self.b_out(out)  # (N, 1, 28, 28)
+        out = self.b_out(out + self.te_out(t).reshape(n, -1, 1, 1))  # (N, 1, 28, 28)
 
         out = self.conv_out(out)
         return out
@@ -153,7 +163,7 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion_no_te.pth'):
+def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion.pth'):
     device = get_device()
     dataloader = get_dataloader(batch_size=batch_size)
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
@@ -202,7 +212,7 @@ def show_images(images):
                 idx += 1
     plt.show()
 
-def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion_no_te.pth'):
+def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion.pth'):
     device = get_device()
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
     net = UNet(n_steps=n_steps, time_emb_dim=time_emb_dim).to(device)
@@ -237,8 +247,7 @@ flags.DEFINE_integer("epochs", 3, "Epochs to train")
 def main(unused_args):
     """
     Samples:
-      python diffusion_no_te.py --train --epochs 1000
-      python diffusion_no_te.py --predict
+      python diffusion.py --train --epochs 5 --predict
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)

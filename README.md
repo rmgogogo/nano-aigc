@@ -31,3 +31,13 @@ python diffusion_no_te.py --train --epochs 100 --predict
 ```
 
 ![](doc/diffusion_no_te.png)
+
+## Diffusion
+
+```
+python diffusion.py --train --epochs 100 --predict
+```
+
+Mac Mini M1 takes around 1 hour (1:17:16).
+
+![](doc/diffusion.png)
