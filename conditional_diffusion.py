@@ -1,5 +1,5 @@
 """
-Diffusion with PyTorch. Has time embedding.
+Conditional Diffusion with PyTorch.
 Everything in one file.
 """
 
@@ -48,14 +48,15 @@ class UNet(nn.Module):
     '''
     UNet is used to predict the noise, given an image with noise, it predict the noise part.
     '''
-    def __init__(self, n_steps=1000, time_emb_dim=100):
+    def __init__(self, n_steps=1000, context_emb_dim=100, n_classes=10):
         super(UNet, self).__init__()
 
-        # Time Embedding, type of positional embedding
-        self.time_embed = nn.Embedding(n_steps, time_emb_dim)
+        # Mix time and label
+        self.time_embed = nn.Embedding(n_steps, context_emb_dim // 2)
+        self.label_embed = nn.Embedding(n_classes, context_emb_dim // 2)
 
         # First half
-        self.te1 = nn.Linear(time_emb_dim, 1)
+        self.te1 = nn.Linear(context_emb_dim, 1)
         self.b1 = nn.Sequential(
             ConvBlock((1, 28, 28), 10),
             ConvBlock((10, 28, 28), 10),
@@ -63,7 +64,7 @@ class UNet(nn.Module):
         )
         self.down1 = nn.Conv2d(10, 10, 4, 2, 1)
 
-        self.te2 = nn.Linear(time_emb_dim, 10)
+        self.te2 = nn.Linear(context_emb_dim, 10)
         self.b2 = nn.Sequential(
             ConvBlock((10, 14, 14), 20),
             ConvBlock((20, 14, 14), 20),
@@ -71,7 +72,7 @@ class UNet(nn.Module):
         )
         self.down2 = nn.Conv2d(20, 20, 4, 2, 1)
 
-        self.te3 = nn.Linear(time_emb_dim, 20)
+        self.te3 = nn.Linear(context_emb_dim, 20)
         self.b3 = nn.Sequential(
             ConvBlock((20, 7, 7), 40),
             ConvBlock((40, 7, 7), 40),
@@ -84,7 +85,7 @@ class UNet(nn.Module):
         )
 
         # Bottleneck
-        self.te_mid = nn.Linear(time_emb_dim, 40)
+        self.te_mid = nn.Linear(context_emb_dim, 40)
         self.b_mid = nn.Sequential(
             ConvBlock((40, 3, 3), 20),
             ConvBlock((20, 3, 3), 20),
@@ -98,7 +99,7 @@ class UNet(nn.Module):
             nn.ConvTranspose2d(40, 40, 2, 1)
         )
 
-        self.te4 = nn.Linear(time_emb_dim, 80)
+        self.te4 = nn.Linear(context_emb_dim, 80)
         self.b4 = nn.Sequential(
             ConvBlock((80, 7, 7), 40),
             ConvBlock((40, 7, 7), 20),
@@ -106,7 +107,7 @@ class UNet(nn.Module):
         )
 
         self.up2 = nn.ConvTranspose2d(20, 20, 4, 2, 1)
-        self.te5 = nn.Linear(time_emb_dim, 40)
+        self.te5 = nn.Linear(context_emb_dim, 40)
         self.b5 = nn.Sequential(
             ConvBlock((40, 14, 14), 20),
             ConvBlock((20, 14, 14), 10),
@@ -114,7 +115,7 @@ class UNet(nn.Module):
         )
 
         self.up3 = nn.ConvTranspose2d(10, 10, 4, 2, 1)
-        self.te_out = nn.Linear(time_emb_dim, 20)
+        self.te_out = nn.Linear(context_emb_dim, 20)
         self.b_out = nn.Sequential(
             ConvBlock((20, 28, 28), 10),
             ConvBlock((10, 28, 28), 10),
@@ -123,9 +124,12 @@ class UNet(nn.Module):
 
         self.conv_out = nn.Conv2d(10, 1, 3, 1, 1)
 
-    def forward(self, x, t):
-        # x is (N, 1, 28, 28)
-        t = self.time_embed(t) # (N, time-embedding-features)
+    def forward(self, x, t, c):
+        # x is (N, 1, 28, 28), t is (N, 1), c is (N, 1)
+        t = self.time_embed(t) # (N, 1, embedding-features // 2)
+        c = self.label_embed(c) # (N, 1, embedding-features // 2)
+        t = torch.cat((t, c), dim=2) # (N, 1, embedding-features)
+
         n = len(x)
         out1 = self.b1(x + self.te1(t).reshape(n, -1, 1, 1))   # (N, 1, 28, 28)
         out2 = self.b2(self.down1(out1) + self.te2(t).reshape(n, -1, 1, 1))  # (N, 12, 14, 14)
@@ -163,24 +167,25 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion.pth'):
+def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='diffusion.pth'):
     device = get_device()
     dataloader = get_dataloader(batch_size=batch_size)
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
-    net = UNet(n_steps=n_steps, time_emb_dim=time_emb_dim).to(device)
+    net = UNet(n_steps=n_steps, context_emb_dim=context_emb_dim).to(device)
     optim = torch.optim.Adam(net.parameters())
     
     net.train()
     with tqdm(range(n_epochs), colour="#00ee00") as epoch_pbar:
         for _ in epoch_pbar:
             with tqdm(dataloader, leave=False, colour="#005500") as batch_pbar:
-                for images, _ in batch_pbar:
+                for images, labels in batch_pbar:
                     # generate (xt, epsilon) pair for training, it also can be implemented as torchvision.transforms
                     x0 = images.to(device)
+                    labels = labels.to(device)
                     x0_batch = len(x0)
                     t = torch.randint(0, n_steps, (x0_batch,)).to(device)
                     xt, epsilon = noiser.noisy(x0, t)
-                    epsilon_hat = net(xt, t.reshape(x0_batch, -1))
+                    epsilon_hat = net(xt, t.reshape(x0_batch, -1), labels.reshape(x0_batch, -1))
                     loss = nn.functional.mse_loss(epsilon_hat, epsilon)
                     optim.zero_grad()
                     loss.backward()
@@ -191,10 +196,11 @@ def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02
 ##################################################################################################################################
 import matplotlib.pyplot as plt
 
-def show_images(images):
+def show_images(images, labels):
     # Converting images to CPU numpy arrays
     if type(images) is torch.Tensor:
         images = images.detach().cpu().numpy()
+    labels = labels.detach().cpu()
 
     # Defining number of rows and columns
     fig = plt.figure(figsize=(4, 4))
@@ -206,24 +212,26 @@ def show_images(images):
     for r in range(rows):
         for c in range(cols):
             if idx < len(images):
-                fig.add_subplot(rows, cols, idx + 1)
+                ax = fig.add_subplot(rows, cols, idx + 1)
                 plt.imshow(images[idx][0], cmap="gray")
+                ax.set_title(f'{labels[idx][0]}')
                 plt.axis('off')
                 idx += 1
     plt.show()
 
-def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion.pth'):
+def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='diffusion.pth'):
     device = get_device()
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
-    net = UNet(n_steps=n_steps, time_emb_dim=time_emb_dim).to(device)
+    net = UNet(n_steps=n_steps, context_emb_dim=context_emb_dim).to(device)
     net.load_state_dict(torch.load(model_path))
 
     net.eval()
     with torch.no_grad():
         x = torch.randn(n_samples, c, h, w).to(device)
+        labels = torch.randint(low=0, high=10, size=(n_samples,)).to(device).reshape(n_samples, -1)
         for _, t in enumerate(list(range(n_steps))[::-1]): # 999->0
             time_tensor = (torch.ones(n_samples, 1) * t).to(device).long()
-            epislon = net(x, time_tensor)
+            epislon = net(x, time_tensor, labels)
             alpha_t = noiser.alphas[t]
             alpha_t_bar = noiser.alpha_bars[t]
             x = (1 / alpha_t.sqrt()) * (x - (1 - alpha_t) / (1 - alpha_t_bar).sqrt() * epislon)
@@ -232,7 +240,7 @@ def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_m
                 z = torch.randn(n_samples, c, h, w).to(device)
                 beta_t = noiser.betas[t]
                 x = x + beta_t.sqrt() * z
-    show_images(x)
+    show_images(x, labels)
 
 ##################################################################################################################################
 

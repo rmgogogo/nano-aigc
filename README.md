@@ -41,3 +41,12 @@ python diffusion.py --train --epochs 100 --predict
 Mac Mini M1 takes around 1 hour (1:17:16).
 
 ![](doc/diffusion.png)
+
+
+## Conditional Diffusion
+
+```
+python conditional_diffusion.py --train --epochs 100 --predict
+```
+
+![](doc/conditional_diffusion.png)
