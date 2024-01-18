@@ -50,3 +50,11 @@ python conditional_diffusion.py --train --epochs 100 --predict
 ```
 
 ![](doc/conditional_diffusion.png)
+
+## CLIP
+
+```
+python clip.py --train --epochs 10 --predict
+```
+
+![](doc/clip.png)

@@ -200,6 +200,7 @@ def show_images(images):
                 plt.imshow(images[idx][0], cmap="gray")
                 plt.axis('off')
                 idx += 1
+    plt.tight_layout()
     plt.show()
 
 def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion_no_te.pth'):

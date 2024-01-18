@@ -128,6 +128,7 @@ def predict(net):
     for i, ax in enumerate(axes.flat):
         ax.imshow(images[i].squeeze(0).numpy(), cmap='gray')
         ax.axis("off")
+    plt.tight_layout()
     plt.show()
 
 ##################################################################################################################################

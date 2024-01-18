@@ -167,7 +167,7 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='diffusion.pth'):
+def train(n_epochs, batch_size=128, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='conditional_diffusion.pth'):
     device = get_device()
     dataloader = get_dataloader(batch_size=batch_size)
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
@@ -217,9 +217,10 @@ def show_images(images, labels):
                 ax.set_title(f'{labels[idx][0]}')
                 plt.axis('off')
                 idx += 1
+    plt.tight_layout()
     plt.show()
 
-def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='diffusion.pth'):
+def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='conditional_diffusion.pth'):
     device = get_device()
     noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
     net = UNet(n_steps=n_steps, context_emb_dim=context_emb_dim).to(device)

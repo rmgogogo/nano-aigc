@@ -137,6 +137,7 @@ def predict(net):
         ax.imshow(x[i].squeeze(0).numpy(), cmap='gray')
         ax.set_title(f'{y[i]}')
         ax.axis("off")
+    plt.tight_layout()
     plt.show()
 
 ##################################################################################################################################
