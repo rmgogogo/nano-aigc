@@ -2,79 +2,11 @@
 CLIP to put text and image into one space.
 This program use a trained VAE encoder to encode the image, use a simple embedding to simulate the text encoding, 
 use the CLIP to align the text encoding into image space.
+
+This file reuse the codes and trained model from vae.py
 """
 
-##################################################################################################################################
-#### This part is copied from vae.py, just to demo all in one file for simplicity
-import torch
-import torch.nn as nn
-
-class Flatten(nn.Module):
-    def __init__(self):
-        super(Flatten, self).__init__()
-    def forward(self, x):
-        return x.view(x.shape[0], -1)
-
-class Reshape(nn.Module):
-    def __init__(self, out_shape):
-        super(Reshape, self).__init__()
-        self.out_shape = out_shape
-    def forward(self, x):
-        return x.view(*self.out_shape)
-
-class Encoder(nn.Module):
-    def __init__(self, latent=2):
-        super(Encoder, self).__init__()
-        self.encode = nn.Sequential(
-            Flatten(),
-            nn.Linear(in_features=28*28, out_features=512),
-            nn.ReLU(),
-            nn.Linear(in_features=512, out_features=256),
-            nn.ReLU()
-        )
-        self.calc_mean = nn.Linear(256, latent)
-        self.calc_logvar = nn.Linear(256, latent)
-    
-    def forward(self, x):
-        x = self.encode(x)
-        return self.calc_mean(x), self.calc_logvar(x)
-
-class Decoder(nn.Module):
-    def __init__(self, latent=2):
-        super(Decoder, self).__init__()
-        self.decode = nn.Sequential(
-            nn.Linear(in_features=latent, out_features=256),
-            nn.ReLU(),
-            nn.Linear(in_features=256, out_features=512),
-            nn.ReLU(),
-            nn.Linear(in_features=512, out_features=28*28),
-            nn.Sigmoid(),
-            Reshape((-1, 1, 28, 28))
-        )
-    def forward(self, x):
-        return self.decode(x)
-    
-class VAE(nn.Module):
-    def __init__(self, latent):
-        super(VAE, self).__init__()
-        self.latent = latent
-        self.encoder = Encoder(latent)
-        self.decoder = Decoder(latent)
-        
-    def sampling(self, mean, logvar):
-        sample = torch.randn(mean.shape).to(mean.device)
-        stdvar = torch.exp(0.5 * logvar)
-        return mean + sample * stdvar
-    
-    def forward(self, x):
-        mean, logvar = self.encoder(x)
-        z = self.sampling(mean, logvar)
-        return self.decoder(z), mean, logvar
-    
-    def generate(self, batch_size = 1):
-        model_device = next(self.parameters()).device
-        z = torch.randn((batch_size, self.latent)).to(model_device)
-        return self.decoder(z)
+from vae import VAE
 
 ##################################################################################################################################
 import torch
@@ -192,11 +124,6 @@ def predict(model_path='clip.pth', vae_model_path='vae.pth'):
 from absl import flags
 from absl import app
 
-FLAGS = flags.FLAGS
-flags.DEFINE_bool("train", False, "Train the model")
-flags.DEFINE_bool("predict", False, "Predict")
-flags.DEFINE_integer("epochs", 3, "Epochs to train")
-
 def main(unused_args):
     """
     Samples:
@@ -209,4 +136,9 @@ def main(unused_args):
         predict()
 
 if __name__ == '__main__':
+    FLAGS = flags.FLAGS
+    flags.DEFINE_bool("train", False, "Train the model")
+    flags.DEFINE_bool("predict", False, "Predict")
+    flags.DEFINE_integer("epochs", 3, "Epochs to train")
+
     app.run(main)

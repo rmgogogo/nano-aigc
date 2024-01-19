@@ -240,11 +240,6 @@ def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_m
 from absl import flags
 from absl import app
 
-FLAGS = flags.FLAGS
-flags.DEFINE_bool("train", False, "Train the model")
-flags.DEFINE_bool("predict", False, "Predict")
-flags.DEFINE_integer("epochs", 3, "Epochs to train")
-
 def main(unused_args):
     """
     Samples:
@@ -257,4 +252,9 @@ def main(unused_args):
         predict()
 
 if __name__ == '__main__':
+    FLAGS = flags.FLAGS
+    flags.DEFINE_bool("train", False, "Train the model")
+    flags.DEFINE_bool("predict", False, "Predict")
+    flags.DEFINE_integer("epochs", 3, "Epochs to train")
+
     app.run(main)
