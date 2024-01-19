@@ -48,3 +48,15 @@ python clip.py --train --epochs 10 --predict
 ```
 
 ![](doc/clip.png)
+
+## CLIP Pro
+
+A pro version of CLIP. It uses the BERT text encoder with real text.
+Since this is a nano image VAE, while BERT encoder generates 768-d vector, it's expected that it's not good like one-hot.
+However it's good enough as a demo.
+
+```
+python clip_pro.py --train --epochs 10 --predict
+```
+
+![](doc/clip_pro.png)
