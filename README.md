@@ -52,8 +52,8 @@ python clip.py --train --epochs 10 --predict
 ## CLIP Pro
 
 A pro version of CLIP. It uses the BERT text encoder with real text.
-Since this is a nano image VAE, while BERT encoder generates 768-d vector, it's expected that it's not good like one-hot.
-However it's good enough as a demo.
+Since this is a nano image VAE, while BERT encoder generates 768-d vector, and we only have 10 ditigals, it has high prob to contain same digital in one batch, then the CLIP's loss can't work well. Using small batch would help but small batch has its own problem. So the performance is not good.
+However it's good enough as a demo to tell the essience.
 
 ```
 python clip_pro.py --train --epochs 10 --predict
