@@ -60,3 +60,21 @@ python clip_pro.py --train --epochs 10 --predict
 ```
 
 ![](doc/clip_pro.png)
+
+## VQ VAE
+
+```
+python vqvae.py --train --epochs 100 --predict
+```
+
+Codebook size is 32, here display the whole possibilites. This sample VQ the whole z, in real case, it VQ the parts.
+
+![](doc/vqvae.png)
+
+The initial codebook:
+
+![](doc/vqvae-init-cb.png)
+
+The learned codebook:
+
+![](doc/vqvae-learned-cb.png)
