@@ -99,7 +99,6 @@ class TextMnist(torch.utils.data.Dataset):
         return self.images[index], self.texts[index]
     
 def get_dataloader(batch_size):
-    tf = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
     dataset = TextMnist()
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 

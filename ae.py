@@ -1,5 +1,5 @@
 """
-VAE with PyTorch.
+AE with PyTorch.
 Everything in one file.
 """
 
@@ -21,62 +21,59 @@ class Reshape(nn.Module):
         return x.view(*self.out_shape)
 
 class Encoder(nn.Module):
-    def __init__(self, latent=2):
+    def __init__(self, latent):
         super(Encoder, self).__init__()
         self.encode = nn.Sequential(
             Flatten(),
             nn.Linear(in_features=28*28, out_features=512),
             nn.ReLU(),
             nn.Linear(in_features=512, out_features=256),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Linear(in_features=256, out_features=128),
+            nn.ReLU(),
+            nn.Linear(in_features=128, out_features=32),
+            nn.ReLU(),
+            nn.Linear(in_features=32, out_features=latent),
+            nn.Tanh(),
         )
-        self.calc_mean = nn.Linear(256, latent)
-        self.calc_logvar = nn.Linear(256, latent)
     
     def forward(self, x):
         x = self.encode(x)
-        return self.calc_mean(x), self.calc_logvar(x)
+        return x
 
 class Decoder(nn.Module):
-    def __init__(self, latent=2):
+    def __init__(self, latent):
         super(Decoder, self).__init__()
         self.decode = nn.Sequential(
-            nn.Linear(in_features=latent, out_features=256),
+            nn.Linear(latent, 32),
             nn.ReLU(),
-            nn.Linear(in_features=256, out_features=512),
+            nn.Linear(32, 128),
             nn.ReLU(),
-            nn.Linear(in_features=512, out_features=28*28),
-            nn.Sigmoid(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 512),
+            nn.ReLU(),
+            nn.Linear(512, 28*28),
+            nn.ReLU(),
             Reshape((-1, 1, 28, 28))
         )
     def forward(self, x):
         return self.decode(x)
     
-class VAE(nn.Module):
+class AE(nn.Module):
     def __init__(self, latent):
-        super(VAE, self).__init__()
+        super(AE, self).__init__()
         self.latent = latent
         self.encoder = Encoder(latent)
         self.decoder = Decoder(latent)
         
-    def sampling(self, mean, logvar):
-        sample = torch.randn(mean.shape).to(mean.device)
-        stdvar = torch.exp(0.5 * logvar)
-        return mean + sample * stdvar
-    
     def forward(self, x):
-        mean, logvar = self.encoder(x)
-        z = self.sampling(mean, logvar)
-        return self.decoder(z), mean, logvar
+        z = self.encoder(x)
+        return self.decoder(z), z
 
-    def calc_latent(self, x):
-        mean, logvar = self.encoder(x)
-        z = self.sampling(mean, logvar)
-        return z
-    
     def generate(self, batch_size = 1):
         model_device = next(self.parameters()).device
-        z = torch.randn((batch_size, self.latent)).to(model_device)
+        z = torch.rand((batch_size, self.latent)).to(model_device)*2-1
         return self.decoder(z)
 
 ##################################################################################################################################
@@ -101,10 +98,9 @@ def get_device():
         device = 'cuda'
     return device
 
-def loss(x_target, x_actual, mean, logvar):
-    reconstruction_loss = nn.functional.mse_loss(x_actual, x_target, reduction='sum')
-    KL_divergence = 0.5 * torch.sum(-1 - logvar + torch.exp(logvar) + mean**2)
-    return reconstruction_loss + KL_divergence
+def loss(x_target, x_actual):
+    reconstruction_loss = nn.functional.mse_loss(x_actual, x_target, reduction='mean')
+    return reconstruction_loss
 
 def train(net, dataloader, device):
     optimizer = torch.optim.AdamW(net.parameters())
@@ -112,8 +108,8 @@ def train(net, dataloader, device):
     with tqdm.tqdm(dataloader, ncols=64) as pbar:
         for x, _ in pbar:
             x = x.to(device)
-            x_actual, mean, logvar = net(x)
-            l = loss(x, x_actual, mean, logvar).to(device)
+            x_actual, z = net(x)
+            l = loss(x, x_actual).to(device)
             optimizer.zero_grad()
             l.backward()
             optimizer.step()
@@ -144,22 +140,22 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python vae.py --train --predict
+      python ae.py --train --epochs 3 --predict
     """
 
     device = get_device()
     if FLAGS.train:
         print('Train')
         dataloader = get_dataloader()
-        net = VAE(latent=2).to(device)
+        net = AE(latent=8).to(device)
         for i in range(FLAGS.epochs):
             train(net, dataloader, device)
-        torch.save(net.state_dict(), 'vae.pth')
+        torch.save(net.state_dict(), 'ae.pth')
 
     if FLAGS.predict:
         print('Predict')
-        net = VAE(latent=2).to(device)
-        net.load_state_dict(torch.load('vae.pth'))
+        net = AE(latent=8).to(device)
+        net.load_state_dict(torch.load('ae.pth'))
         predict(net)
 
 if __name__ == '__main__':

@@ -78,3 +78,24 @@ The initial codebook:
 The learned codebook:
 
 ![](doc/vqvae-learned-cb.png)
+
+## DDIM (Faster Diffusion Generation)
+
+50 times faster.
+
+```
+python diffusion.py --predict --ddim
+python conditional_diffusion.py --predict --ddim
+```
+
+![](doc/diffusion_ddim.png)
+
+![](doc/conditional_diffusion_ddim.png)
+
+## Latent Diffusion
+
+Based on vae with latent 8, it do diffusion in latent space.
+However since the latent space already is noise-make-sense and high compressed (8 numbers), the diffusion in latent didn't work well as expected.
+It's mainly for demo purpose.
+
+![](doc/latent_diffusion.png)

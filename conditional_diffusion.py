@@ -243,6 +243,33 @@ def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_m
                 x = x + beta_t.sqrt() * z
     show_images(x, labels)
 
+def predict_ddim(ddim_steps=20, eta=1, n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, context_emb_dim=100, model_path='conditional_diffusion.pth'):
+    device = get_device()
+    noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
+    net = UNet(n_steps=n_steps, context_emb_dim=context_emb_dim).to(device)
+    net.load_state_dict(torch.load(model_path))
+
+    net.eval()
+    with torch.no_grad():
+        x = torch.randn(n_samples, c, h, w).to(device)
+        labels = torch.randint(low=0, high=10, size=(n_samples,)).to(device).reshape(n_samples, -1)
+        ts = torch.linspace(n_steps, 0, (ddim_steps + 1)).to(torch.long).to(device)
+        for i in tqdm(range(ddim_steps)):
+            cur_t = ts[i] - 1 # 999
+            prev_t = ts[i+1] - 1 # 949
+            time_tensor = (torch.ones(n_samples, 1).to(device) * cur_t).long()
+            epislon = net(x, time_tensor, labels)
+            noise = torch.randn_like(x)
+
+            ab_cur = noiser.alpha_bars[cur_t]
+            ab_prev = noiser.alpha_bars[prev_t] if prev_t >= 0 else 1
+            var = eta * torch.sqrt((1 - ab_prev) / (1 - ab_cur) * (1 - ab_cur / ab_prev))
+            w1 = (ab_prev / ab_cur)**0.5
+            w2 = (1 - ab_prev - var**2)**0.5 - (ab_prev * (1 - ab_cur) / ab_cur)**0.5
+            w3 = var
+            x = w1 * x + w2 * epislon + w3 * noise
+    show_images(x, labels)
+
 ##################################################################################################################################
 
 from absl import flags
@@ -251,18 +278,22 @@ from absl import app
 FLAGS = flags.FLAGS
 flags.DEFINE_bool("train", False, "Train the model")
 flags.DEFINE_bool("predict", False, "Predict")
+flags.DEFINE_bool("ddim", False, "Predict fastly")
 flags.DEFINE_integer("epochs", 3, "Epochs to train")
 
 def main(unused_args):
     """
     Samples:
-      python diffusion.py --train --epochs 5 --predict
+      python diffusion.py --train --epochs 5 --predict --ddim
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
 
     if FLAGS.predict:
-        predict()
+        if FLAGS.ddim:
+            predict_ddim()
+        else:
+            predict()
 
 if __name__ == '__main__':
     app.run(main)

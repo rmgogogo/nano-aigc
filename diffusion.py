@@ -26,6 +26,15 @@ class Noiser:
             epislon = torch.randn(n, c, h, w).to(self.device)
             xt = alpha_bar.sqrt().reshape(n, 1, 1, 1) * x0 + (1 - alpha_bar).sqrt().reshape(n, 1, 1, 1) * epislon
             return xt, epislon
+        
+    def noisy_1d(self, x0, t):
+        # TODO: find a way to merge it with noisy to handle different dimentions
+        with torch.no_grad():
+            n, c = x0.shape
+            alpha_bar = self.alpha_bars[t]
+            epislon = torch.randn_like(x0).to(self.device)
+            xt = alpha_bar.sqrt().reshape(n, 1) * x0 + (1 - alpha_bar).sqrt().reshape(n, 1) * epislon
+            return xt, epislon
 
 class ConvBlock(nn.Module):
     def __init__(self, in_shape, out_c, kernel_size=3, stride=1, padding=1, normalize=True):
@@ -235,6 +244,32 @@ def predict(n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_m
                 x = x + beta_t.sqrt() * z
     show_images(x)
 
+def predict_ddim(ddim_steps=20, eta=1, n_samples=16, c=1, h=28, w=28, n_steps=1000, beta_min=0.0001, beta_max=0.02, time_emb_dim=100, model_path='diffusion.pth'):
+    device = get_device()
+    noiser = Noiser(device=device, n_steps=n_steps, beta_min=beta_min, beta_max=beta_max)
+    net = UNet(n_steps=n_steps, time_emb_dim=time_emb_dim).to(device)
+    net.load_state_dict(torch.load(model_path))
+
+    net.eval()
+    with torch.no_grad():
+        ts = torch.linspace(n_steps, 0, (ddim_steps + 1)).to(torch.long).to(device)
+        x = torch.randn(n_samples, c, h, w).to(device)
+        for i in tqdm(range(ddim_steps)):
+            cur_t = ts[i] - 1 # 999
+            prev_t = ts[i+1] - 1 # 949
+            time_tensor = (torch.ones(n_samples, 1).to(device) * cur_t).long()
+            epislon = net(x, time_tensor)
+            noise = torch.randn_like(x)
+
+            ab_cur = noiser.alpha_bars[cur_t]
+            ab_prev = noiser.alpha_bars[prev_t] if prev_t >= 0 else 1
+            var = eta * torch.sqrt((1 - ab_prev) / (1 - ab_cur) * (1 - ab_cur / ab_prev))
+            w1 = (ab_prev / ab_cur)**0.5
+            w2 = (1 - ab_prev - var**2)**0.5 - (ab_prev * (1 - ab_cur) / ab_cur)**0.5
+            w3 = var
+            x = w1 * x + w2 * epislon + w3 * noise
+    show_images(x)
+
 ##################################################################################################################################
 
 from absl import flags
@@ -243,18 +278,22 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python diffusion.py --train --epochs 5 --predict
+      python diffusion.py --train --epochs 100 --predict --ddim
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
 
     if FLAGS.predict:
-        predict()
+        if FLAGS.ddim:
+            predict_ddim()
+        else:
+            predict()
 
 if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
     flags.DEFINE_integer("epochs", 3, "Epochs to train")
+    flags.DEFINE_bool("ddim", False, "Faster generation")
 
     app.run(main)
