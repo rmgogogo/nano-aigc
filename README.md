@@ -99,3 +99,9 @@ However since the latent space already is noise-make-sense and high compressed (
 It's mainly for demo purpose.
 
 ![](doc/latent_diffusion.png)
+
+## GAN
+
+Gan with a simple conv net, so it's DCGAN.
+
+![](doc/gan.png)
