@@ -11,19 +11,19 @@ class Generator(nn.Module):
     def __init__(self, in_chan=100, hidden=64, out_chan=1):
         super(Generator, self).__init__()
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(in_chan, hidden * 8, 4, 1, 0, bias=False), # 4x4
+            nn.ConvTranspose2d(in_chan, hidden * 8, 4, 1, 0), # 4x4
             nn.BatchNorm2d(hidden * 8),
             nn.ReLU(True),
-            nn.ConvTranspose2d(hidden * 8, hidden * 4, 4, 2, 1, bias=False), # 8x8
+            nn.ConvTranspose2d(hidden * 8, hidden * 4, 4, 2, 1), # 8x8
             nn.BatchNorm2d(hidden * 4),
             nn.ReLU(True),
-            nn.ConvTranspose2d(hidden * 4, hidden * 2, 4, 2, 1, bias=False), # 16x16
+            nn.ConvTranspose2d(hidden * 4, hidden * 2, 4, 2, 1), # 16x16
             nn.BatchNorm2d(hidden * 2),
             nn.ReLU(True),
-            nn.ConvTranspose2d(hidden * 2, hidden, 4, 2, 1, bias=False), # 32x32
+            nn.ConvTranspose2d(hidden * 2, hidden, 4, 2, 1), # 32x32
             nn.BatchNorm2d(hidden),
             nn.ReLU(True),
-            nn.ConvTranspose2d(hidden, out_chan, kernel_size=1, stride=1, padding=2, bias=False), # 28x28
+            nn.ConvTranspose2d(hidden, out_chan, kernel_size=1, stride=1, padding=2), # 28x28
             nn.Tanh() # [-1, 1]
         )
 
@@ -35,15 +35,15 @@ class Discriminator(nn.Module):
     def __init__(self, in_chan=1, hidden=64):
         super(Discriminator, self).__init__()
         self.classifier = nn.Sequential(
-            nn.Conv2d(in_chan, hidden, 4, 2, 1, bias=False), # H/2, W/2
+            nn.Conv2d(in_chan, hidden, 4, 2, 1), # H/2, W/2
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(hidden, hidden * 2, 4, 2, 1, bias=False), # H/4, W/4
+            nn.Conv2d(hidden, hidden * 2, 4, 2, 1), # H/4, W/4
             nn.BatchNorm2d(hidden * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(hidden * 2, hidden * 4, 4, 2, 1, bias=False), # H/8, W/8
+            nn.Conv2d(hidden * 2, hidden * 4, 4, 2, 1), # H/8, W/8
             nn.BatchNorm2d(hidden * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(hidden * 4, 1, 4, 2, 1, bias=False), # H/16, W/16
+            nn.Conv2d(hidden * 4, 1, 4, 2, 1), # H/16, W/16
             nn.Sigmoid()
         )
 
