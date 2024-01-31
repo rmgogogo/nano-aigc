@@ -12,37 +12,76 @@ import torch.nn as nn
 class Net(nn.Module):
     """
       Predict the noise from a noised latent tensor [N, latent].
-      Backbone is not UNet, but a simple MLP.
+      Backbone is a 1D UNet.
     """
     def __init__(self, n_steps=1000, latent=8):
         super(Net, self).__init__()
         self.time_embed = nn.Embedding(n_steps, latent)
         self.condition_embed = nn.Embedding(10, latent)
-        self.l1 = nn.Linear(latent, 4)
-        self.l2 = nn.Linear(4, 2)
-        self.l3 = nn.Linear(2, 4)
-        self.l4 = nn.Linear(8, latent)
-        self.l5 = nn.Linear(latent, latent)
         self.te1 = nn.Linear(latent*2, latent)
         self.te2 = nn.Linear(latent*2, 4)
         self.te3 = nn.Linear(latent*2, 2)
-        self.te4 = nn.Linear(latent*2, 8)
+        self.td1 = nn.Linear(latent*2, 1)
+        self.td2 = nn.Linear(latent*2, 2)
+        self.td3 = nn.Linear(latent*2, 4)
+
+        self.e1 = nn.Conv1d(1, 2, 3, 2, 1)
+        self.e1b = nn.Conv1d(2, 2, 3, 1, 1)
+        self.e2 = nn.Conv1d(2, 4, 3, 2, 1)
+        self.e2b = nn.Conv1d(4, 4, 3, 1, 1)
+        self.e3 = nn.Conv1d(4, 8, 3, 2, 1)
+        self.e3b = nn.Conv1d(8, 8, 3, 1, 1)
+
+        self.d1 = nn.ConvTranspose1d(8, 4, 2, 2)
+        self.d1b = nn.ConvTranspose1d(4, 4, 3, 1, 1)
+        self.d2 = nn.ConvTranspose1d(8, 4, 2, 2)
+        self.d2b = nn.ConvTranspose1d(4, 2, 3, 1, 1)
+        self.d2c = nn.ConvTranspose1d(2, 2, 3, 1, 1)
+        self.d3 = nn.ConvTranspose1d(4, 2, 2, 2)
+        self.d3b = nn.ConvTranspose1d(2, 1, 3, 1, 1)
+        self.d3c = nn.ConvTranspose1d(1, 1, 3, 1, 1)
 
     def forward(self, x, t, c):
         t = self.time_embed(t).squeeze(1)
         c = self.condition_embed(c).squeeze(1)
         t = torch.cat((t, c), dim=1)
+        x = x.unsqueeze(1) # [1, 8]
 
-        x = self.l1(x + self.te1(t)) #[N, 4]
+        x = self.e1(x + self.te1(t).unsqueeze(1)) # [2, 4]
+        x = torch.relu(x)
+        x = self.e1b(x) # [2, 4]
         x1 = x = torch.relu(x)
-        x = self.l2(x + self.te2(t)) #[N, 2]
+        x = self.e2(x + self.te2(t).unsqueeze(1)) # [4, 2]
         x = torch.relu(x)
-        x = self.l3(x + self.te3(t)) #[N, 4]
+        x = self.e2b(x) # [4, 2]
+        x2 = x = torch.relu(x)
+        x = self.e3(x + self.te3(t).unsqueeze(1)) # [8, 1]
         x = torch.relu(x)
-        x = torch.cat((x, x1), dim=1) #[N,8]
-        x = self.l4(x + self.te4(t)) #[N, 8]
+        x = self.e3b(x) # [8, 1]
         x = torch.relu(x)
-        x = self.l5(x)
+
+        # [8, 1]
+        x = self.d1(x + self.td1(t).unsqueeze(1))  # [4, 2]
+        x = torch.relu(x)
+        x = self.d1b(x) # [4, 2]
+        x = torch.relu(x)
+
+        x = torch.cat((x, x2), dim=1) # [8, 2]
+        x = self.d2(x + self.td2(t).unsqueeze(1)) # [4, 4]
+        x = torch.relu(x)
+        x = self.d2b(x) # [2, 4]
+        x = torch.relu(x)
+        x = self.d2c(x) # [2, 4]
+        x = torch.relu(x)
+
+        x = torch.cat((x, x1), dim=1) # [4, 4]
+        x = self.d3(x + self.td3(t).unsqueeze(1)) # [2, 8]
+        x = torch.relu(x)
+        x = self.d3b(x) # [1, 8]
+        x = torch.relu(x)
+        x = self.d3c(x) # [1, 8]
+        x = x.squeeze(1)
+
         return x
 
 ##################################################################################################################################

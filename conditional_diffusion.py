@@ -284,7 +284,7 @@ flags.DEFINE_integer("epochs", 3, "Epochs to train")
 def main(unused_args):
     """
     Samples:
-      python diffusion.py --train --epochs 5 --predict --ddim
+      python conditional_diffusion.py --train --epochs 5 --predict --ddim
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
