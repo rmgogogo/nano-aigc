@@ -105,3 +105,21 @@ It's mainly for demo purpose.
 Gan with a simple conv net, so it's DCGAN.
 
 ![](doc/gan.png)
+
+## Pathes VQ VAE
+
+![](doc/patches.png)
+
+Split image into 4x4 smaller images, so we have 7x7 patches.
+
+Train VQ VAE for the patches.
+
+It's like tokenizer to give each patch an identifier. So image can be represented as a 7x7 sequence. Later we can implement ViT based on it.
+
+![](doc/vq_vae_patches.png)
+
+Compare the Patches VQ VAE with VQ-VAE or VAE, we would find that image is more sharp. However in the boundary of the two patches, we may need to do some additional low-band filtering to make it be more smooth.
+
+![](doc/patches-vq-vae-codebook.png)
+
+The codebook is trained and looks good.
