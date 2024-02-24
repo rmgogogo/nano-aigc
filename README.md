@@ -106,7 +106,7 @@ Gan with a simple conv net, so it's DCGAN.
 
 ![](doc/gan.png)
 
-## Pathes VQ VAE
+## Patches VQ VAE
 
 ![](doc/patches.png)
 
