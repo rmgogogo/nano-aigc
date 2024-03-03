@@ -123,3 +123,13 @@ Compare the Patches VQ VAE with VQ-VAE or VAE, we would find that image is more 
 ![](doc/patches-vq-vae-codebook.png)
 
 The codebook is trained and looks good.
+
+## Transformer Decoder Part
+
+### RoPE
+
+![](doc/rope.png)
+
+### Llama
+
+TODO: finish the nano training
