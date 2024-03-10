@@ -33,31 +33,37 @@ class ToyTokenizer:
             result.append(token)
         result.append(self.eos)
         return result
+    
+    def token2char(self, token):
+        if token == self.token_add:
+            char = '+'
+        elif token == self.token_equal:
+            char = '='
+        elif token == self.eos:
+            char = ''
+        else:
+            char = str(token.item() - self.zero)
+        return char
 
     def detokenize(self, tokens):
         result = []
         for token in tokens:
-            if token == self.token_add:
-                char = '+'
-            elif token == self.token_equal:
-                char = '='
-            elif token == self.eos:
-                break
-            else:
-                char = str(token - self.zero)
+            char = self.token2char(token)
             result.append(char)
         return ' '.join(result)
 
 class ToyDataset(torch.utils.data.Dataset):
-    def __init__(self, max_factor=9, transform=None):
+    def __init__(self, max_factor=9, transform=None, n_epochs=1):
         self.max_factor = max_factor
         self.transform = transform
+        self.repeat = n_epochs # for better training performance, PyTorch didn't well handle epoch data pipeline
         pass
 
     def __len__(self):
-        return 100
+        return 100*self.repeat
 
     def __getitem__(self, idx):
+        idx == idx % self.repeat
         x = idx // 10
         y = idx % 10
         z = x + y

@@ -19,14 +19,12 @@ Model args
 class ModelArgs:
     # input
     max_batch_size: int = 100
-    max_seq_len: int = 6
-    dim: int = 32
+    max_seq_len: int = 5
+    dim: int = 64
     # net
-    n_layers: int = 4
+    n_layers: int = 8
     # attention
     n_heads: int = 8
-    # FeedForward
-    multiple_of: int = 256
     # RMSNorm
     norm_eps: float = 1e-5
     # device
@@ -74,13 +72,15 @@ class FeedForward(nn.Module):
 
         hidden_dim = int(8 * args.dim / 3)
         # Round the hidden_dim to the nearest multiple of the multiple_of parameter
-        hidden_dim = args.multiple_of * ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
+        # hidden_dim = args.multiple_of * ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
 
-        self.gate = nn.Linear(args.dim, hidden_dim, bias=False)
-        self.up = nn.Linear(args.dim, hidden_dim, bias=False)
-        self.down = nn.Linear(hidden_dim, args.dim, bias=False)
+        self.drop = nn.Dropout(p=0.1)
+        self.gate = nn.Linear(args.dim, hidden_dim)
+        self.up = nn.Linear(args.dim, hidden_dim)
+        self.down = nn.Linear(hidden_dim, args.dim)
 
     def forward(self, x: torch.Tensor):
+        x = self.drop(x)
         # (B, Seq_Len, Dim) --> (B, Seq_Len, Hidden_Dim)
         swish = F.silu(self.gate(x))
         # (B, Seq_Len, Dim) --> (B, Seq_Len, Hidden_Dim)
@@ -127,11 +127,13 @@ class Decoder(nn.Module):
             self.layers.append(DecoderBlock(args))
 
         self.head_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.head_output = nn.Linear(args.dim, self.vocab_size, bias=False)
+        self.head_output = nn.Linear(args.dim, self.vocab_size)
+        self.drop = nn.Dropout(p=0.1)
 
     def forward(self, tokens: torch.Tensor):
         # (B, Seq_Len) -> (B, Seq_Len, Dim)
         h = self.tok_embeddings(tokens)
+        self.drop(h)
         for layer in self.layers:
             h = layer(h)
         h = self.head_norm(h)
@@ -142,9 +144,9 @@ class Decoder(nn.Module):
 import toy
 import tqdm
 
-def get_dataloader(batch_size):
-    dataset = toy.ToyDataset(transform=toy.TokenizerTransform())
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+def get_dataloader(batch_size, n_epochs):
+    dataset = toy.ToyDataset(transform=toy.TokenizerTransform(), n_epochs=n_epochs)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 
 def get_device():
     device = 'cpu'
@@ -154,28 +156,43 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, model_path='toy_llama.pth', batch_size=128):
-    dataloader = get_dataloader(batch_size)
+def train(n_epochs, model_path='toy_llama.pth', batch_size=100):
+    dataloader = get_dataloader(batch_size, n_epochs)
     device = get_device()
-    net = Decoder(ModelArgs(max_batch_size=batch_size, max_seq_len=6, dim=32, n_layers=4, n_heads=8, device=device, vocab_size=22))
+    net = Decoder(ModelArgs(max_batch_size=batch_size, max_seq_len=5, dim=32, n_layers=4, n_heads=8, device=device, vocab_size=22))
     net = net.to(device)
     optimizer = torch.optim.AdamW(net.parameters())
     net.train()
-    with tqdm.tqdm(range(n_epochs), colour="#00ee00") as epbar:
-        for _ in epbar:
-            with tqdm.tqdm(dataloader, colour="#e034f2", leave=False) as pbar:
-                for o in pbar:
-                    x = o[:,:-1].to(device)
-                    t = o[:,1:].to(device)
-                    y = net(x)
-                    loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    pbar.set_description(f"Loss {loss.cpu().item():.4f}")
-            epbar.set_description(f"Loss {loss.cpu().item():.4f}")
+    with tqdm.tqdm(dataloader, colour="#e034f2") as pbar:
+        for o in pbar:
+            x = o[:,:-1].to(device)
+            t = o[:,1:].to(device)
+            y = net(x)
+            loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            pbar.set_description(f"Loss {loss.cpu().item():.4f}")
     torch.save(net.state_dict(), model_path)
 
+##################################################################################################################################
+import toy
+
+def predict(model_path='toy_llama.pth', user_input='1 + 1 ='):
+    device = get_device()
+    net = Decoder(ModelArgs(max_batch_size=1, max_seq_len=5, dim=32, n_layers=4, n_heads=8, device=device, vocab_size=22))
+    net.load_state_dict(torch.load(model_path))
+    tokenizer = toy.ToyTokenizer()
+
+    net.eval()
+    with torch.no_grad():
+        text = user_input
+        tokens = tokenizer.tokenize(text)
+        x = torch.tensor(tokens, dtype=torch.int)
+        y = net(x).argmax(dim=1)
+        print('DEBUG: ', tokenizer.detokenize(y))
+        char = tokenizer.token2char(y[-1])
+        print(text, char)
 
 ##################################################################################################################################
 
@@ -185,18 +202,19 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python llama.py --train --epochs 100 --predict
+      python llama.py --train --epochs 100 --predict --input "1 + 1 ="
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
 
-    # if FLAGS.predict:
-    #     predict()
+    if FLAGS.predict:
+        predict(user_input=FLAGS.input)
 
 if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
-    flags.DEFINE_integer("epochs", 3, "Epochs to train")
+    flags.DEFINE_integer("epochs", 2000, "Epochs to train")
+    flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
 
     app.run(main)
