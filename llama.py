@@ -62,6 +62,16 @@ class VannilaPE(nn.Module):
     def forward(self, x):
         x = x + self.pe[:x.size(1)]
         return self.dropout(x)
+    
+class LearnablePE(nn.Module):
+    def __init__(self, dim, max_len, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.pe = nn.Parameter(torch.randn(max_len, dim))
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(1)]
+        return self.dropout(x)
 
 """
 Llama FeedForward
@@ -97,7 +107,7 @@ One Block of the Transformer Decoder part (GPT block, Llama block)
 class DecoderBlock(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
-        self.pe = VannilaPE(args.dim, args.max_seq_len)
+        self.pe = LearnablePE(args.dim, args.max_seq_len)
         self.attention = nn.MultiheadAttention(embed_dim=args.dim, num_heads=args.n_heads)
         self.feed_forward = FeedForward(args)
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
