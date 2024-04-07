@@ -31,7 +31,6 @@ class ToyTokenizer:
                 num = int(char)
                 token = self.zero + num
             result.append(token)
-        result.append(self.eos)
         return result
     
     def token2char(self, token):
@@ -53,17 +52,17 @@ class ToyTokenizer:
         return ' '.join(result)
 
 class ToyDataset(torch.utils.data.Dataset):
-    def __init__(self, max_factor=9, transform=None, n_epochs=1):
-        self.max_factor = max_factor
+    def __init__(self, transform=None, n_epochs=1):
         self.transform = transform
-        self.repeat = n_epochs # for better training performance, PyTorch didn't well handle epoch data pipeline
+        self.repeat = n_epochs # for better training performance to avoid setup new pipeline
+        self.num_samples = 100
         pass
 
     def __len__(self):
-        return 100*self.repeat
+        return self.num_samples * self.repeat
 
     def __getitem__(self, idx):
-        idx == idx % self.repeat
+        idx = idx % self.num_samples
         x = idx // 10
         y = idx % 10
         z = x + y
@@ -74,9 +73,12 @@ class ToyDataset(torch.utils.data.Dataset):
         return result
     
 class TokenizerTransform:
-    def __init__(self):
+    def __init__(self, max_seq=10):
         self.tokenizer = ToyTokenizer()
+        self.max_seq = max_seq
 
     def __call__(self, text):
         tokens = self.tokenizer.tokenize(text)
+        padding_size = self.max_seq - len(tokens)
+        tokens = tokens + [self.tokenizer.eos for _ in range(padding_size)]
         return torch.tensor(tokens, dtype=torch.int)
