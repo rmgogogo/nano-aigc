@@ -1,7 +1,11 @@
 '''
 Vannila Transformer Decoder, aka GPT2
+
+Tricks:
+- nn.MultiheadAttention, take care the batch_first and attn_mask
+- the GPT2 paper mentioned some weight initialization trick, but it doesn't help
 '''
-# TODO: accuracy, use pre-built attention
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -62,15 +66,6 @@ class GPT2(nn.Module):
         self.final_ln = nn.LayerNorm(embed_dim)
         self.final_dense = nn.Linear(embed_dim, n_vocab)
 
-        # Trick: initialize the weights
-        self.apply(self._init_weights)
-        # Tick: initialize the weights based on residential block numbers
-        for pn, p in self.named_parameters():
-            if pn.endswith('ff_out_proj.weight') or pn.endswith('out_proj.weight') or pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * n_blocks))
-            if pn.endswith('positioning.pe'):
-                torch.nn.init.uniform_(p)
-
     def forward(self, tokens):
         # [B, S]
         x = self.token_embedding(tokens)
@@ -83,17 +78,6 @@ class GPT2(nn.Module):
         x = self.final_dense(x)
         # [B, S, V]
         return x
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
 
 ##################################################################################################################################
 import toy
@@ -168,7 +152,7 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python gpt2.py --train --epochs 2000 --predict --input "1 + 1 ="
+      python gpt2.py --train --epochs 400 --predict --input "1 + 1 ="
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
@@ -180,7 +164,7 @@ if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
-    flags.DEFINE_integer("epochs", 2000, "Epochs to train")
+    flags.DEFINE_integer("epochs", 400, "Epochs to train")
     flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
 
     app.run(main)
