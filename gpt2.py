@@ -168,8 +168,13 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        # Accuracy
+        truth = t[:,3]
+        actual = torch.argmax(y, dim=2)[:,3]
+        accuracy = (actual == truth).sum().item() / truth.shape[0]
         # TensorBoard
-        writer.add_scalar("Loss", loss.cpu().item(), batch_idx)
+        writer.add_scalar("Accuracy", accuracy, batch_idx)
+        writer.add_scalar("Loss", loss.item(), batch_idx)
         if batch_idx == 0:
             writer.add_graph(net, input_to_model=x, verbose=False)
         if batch_idx == n_epochs-1:
@@ -204,7 +209,7 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python gpt2.py --train --epochs 10000 --predict --input "1 + 1 ="
+      python gpt2.py --train --epochs 2000 --predict --input "1 + 1 ="
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
@@ -216,7 +221,7 @@ if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
-    flags.DEFINE_integer("epochs", 10, "Epochs to train")
+    flags.DEFINE_integer("epochs", 2000, "Epochs to train")
     flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
 
     app.run(main)
