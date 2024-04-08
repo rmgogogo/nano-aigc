@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 class RMSNorm(nn.Module):
     '''
     Root Mean Square Layer Normalization, https://arxiv.org/abs/1910.07467
-    Faster: 15.9/14.17 = 1.12X faster than LayerNorm
+    Trick: 15.9/14.17 = 1.12X faster than LayerNorm
     '''
     def __init__(self, embed_dim, eps=1e-5):
         super().__init__()
@@ -46,6 +46,7 @@ class LlamaBlock(nn.Module):
         self.attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, batch_first=True, dropout=dropout)
         self.register_buffer("attention_mask", torch.tril(torch.ones((max_seq, max_seq))) == 0)
         self.ln2 = RMSNorm(embed_dim)
+        self.ff_gate = nn.Linear(embed_dim, 2*embed_dim)
         self.ff_in_proj = nn.Linear(embed_dim, 2*embed_dim)
         self.ff_out_proj = nn.Linear(2*embed_dim, embed_dim)
         self.ff_dropout = nn.Dropout(dropout)
@@ -54,9 +55,12 @@ class LlamaBlock(nn.Module):
         res = self.ln1(x)
         res, _ = self.attention(res, res, res, attn_mask=self.attention_mask)
         x = x + res
+        
+        # Trick: LLaMA feed-forward is 14.17/12.8=1.10x faster than GPT2 feed-forward.
         res = self.ln2(x)
-        res = self.ff_in_proj(res)
-        res = F.gelu(res)
+        gate = F.silu(self.ff_gate(res))
+        v = self.ff_in_proj(res)
+        res = gate * v
         res = self.ff_out_proj(res)
         res = self.ff_dropout(res)
         x = x + res
