@@ -27,7 +27,7 @@ class Positioning(nn.Module):
 
 class GPT2Block(nn.Module):
     '''
-    GPT2 Blocker
+    GPT2 Block
     '''
     def __init__(self, embed_dim, num_heads, dropout, max_seq):
         super().__init__()

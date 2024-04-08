@@ -1,162 +1,101 @@
-# Referenced the following codes and did little modification
-#     https://github.com/hkproj/pytorch-llama/blob/main/model.py
-#     https://github.com/google/gemma_pytorch/blob/main/gemma/model.py
-# Vanilla Transformer is here.
-#     https://github.com/rmgogogo/nano-transformers
+'''
+LLaMA2
+'''
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from dataclasses import dataclass
-from typing import Optional
 import math
+from torch.utils.tensorboard import SummaryWriter
 
-"""
-Model args
-"""
-@dataclass
-class ModelArgs:
-    # input
-    max_batch_size: int = 100
-    max_seq_len: int = 5
-    dim: int = 64
-    # net
-    n_layers: int = 8
-    # attention
-    n_heads: int = 8
-    # RMSNorm
-    norm_eps: float = 1e-5
-    # device
-    device: str = None
-    # vocab
-    vocab_size: int = 22
 
-"""
-Root Mean Square Layer Normalization
-https://arxiv.org/abs/1910.07467
-"""
 class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float):
+    '''
+    Root Mean Square Layer Normalization, https://arxiv.org/abs/1910.07467
+    Faster: 15.9/14.17 = 1.12X faster than LayerNorm
+    '''
+    def __init__(self, embed_dim, eps=1e-5):
         super().__init__()
         self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def norm(self, x: torch.Tensor):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        self.weight = nn.Parameter(torch.ones(embed_dim))
 
     def forward(self, x: torch.Tensor):
-        return self.weight * self.norm(x.float()).type_as(x)
+        return self.weight * x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
-class VannilaPE(nn.Module):
-    def __init__(self, dim, max_len, dropout=0.1):
+class Positioning(nn.Module):
+    '''
+    Learnable Position Embedding
+    '''
+    def __init__(self, embed_dim, max_seq, dropout):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        pe = torch.zeros(max_len, dim)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, dim, 2, dtype=torch.float) * (-math.log(10000.0) / dim))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
+        self.dropout = nn.Dropout(dropout)
+        self.pe = nn.Parameter(torch.randn(1, max_seq, embed_dim))
 
     def forward(self, x):
-        x = x + self.pe[:x.size(1)]
+        x = x + self.pe
         return self.dropout(x)
+
+class LlamaBlock(nn.Module):
+    '''
+    LLaMA Block
+    '''
+    def __init__(self, embed_dim, num_heads, dropout, max_seq):
+        super().__init__()
+        self.ln1 = RMSNorm(embed_dim)
+        # Trick: when using nn.MultiheadAttention, take care the batch_first and attn_mask
+        self.attention = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, batch_first=True, dropout=dropout)
+        self.register_buffer("attention_mask", torch.tril(torch.ones((max_seq, max_seq))) == 0)
+        self.ln2 = RMSNorm(embed_dim)
+        self.ff_in_proj = nn.Linear(embed_dim, 2*embed_dim)
+        self.ff_out_proj = nn.Linear(2*embed_dim, embed_dim)
+        self.ff_dropout = nn.Dropout(dropout)
     
-class LearnablePE(nn.Module):
-    def __init__(self, dim, max_len, dropout=0.1):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.pe = nn.Parameter(torch.randn(max_len, dim))
-
     def forward(self, x):
-        x = x + self.pe[:x.size(1)]
-        return self.dropout(x)
-
-"""
-Llama FeedForward
-"""
-class FeedForward(nn.Module):
-    def __init__(self, args: ModelArgs):
-        super().__init__()
-
-        hidden_dim = int(8 * args.dim / 3)
-        # Round the hidden_dim to the nearest multiple of the multiple_of parameter
-        # hidden_dim = args.multiple_of * ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
-
-        self.drop = nn.Dropout(p=0.1)
-        self.gate = nn.Linear(args.dim, hidden_dim)
-        self.up = nn.Linear(args.dim, hidden_dim)
-        self.down = nn.Linear(hidden_dim, args.dim)
-
-    def forward(self, x: torch.Tensor):
-        x = self.drop(x)
-        # (B, Seq_Len, Dim) --> (B, Seq_Len, Hidden_Dim)
-        swish = F.silu(self.gate(x))
-        # (B, Seq_Len, Dim) --> (B, Seq_Len, Hidden_Dim)
-        x_V = self.up(x)
-        # (B, Seq_Len, Hidden_Dim) * (B, Seq_Len, Hidden_Dim) --> (B, Seq_Len, Hidden_Dim)
-        x = swish * x_V
-        # (B, Seq_Len, Hidden_Dim) --> (B, Seq_Len, Dim)
-        x = self.down(x)
+        res = self.ln1(x)
+        res, _ = self.attention(res, res, res, attn_mask=self.attention_mask)
+        x = x + res
+        res = self.ln2(x)
+        res = self.ff_in_proj(res)
+        res = F.gelu(res)
+        res = self.ff_out_proj(res)
+        res = self.ff_dropout(res)
+        x = x + res
         return x
 
-"""
-One Block of the Transformer Decoder part (GPT block, Llama block)
-"""
-class DecoderBlock(nn.Module):
-    def __init__(self, args: ModelArgs):
+class Llama(nn.Module):
+    '''
+    LLaMA
+    '''
+    def __init__(self, n_blocks, n_vocab, max_seq, embed_dim, num_heads, dropout):
         super().__init__()
-        self.pe = LearnablePE(args.dim, args.max_seq_len)
-        self.attention = nn.MultiheadAttention(embed_dim=args.dim, num_heads=args.n_heads)
-        self.feed_forward = FeedForward(args)
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.feed_forward_norm = RMSNorm(args.dim, eps=args.norm_eps)
-    
-    def forward(self, x: torch.Tensor):
-        xnorm = self.attention_norm(x)
-        xqk = self.pe(xnorm)
-        xa, _ = self.attention(xqk, xqk, xnorm)
-        h = x + xa
-        out = h + self.feed_forward(self.feed_forward_norm(h))
-        return out
+        self.token_embedding = nn.Embedding(n_vocab, embed_dim)
+        self.positioning = Positioning(embed_dim=embed_dim, max_seq=max_seq, dropout=dropout)
+        self.blocks = nn.ModuleList()
+        for _ in range(n_blocks):
+            self.blocks.append(LlamaBlock(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout, max_seq=max_seq))
+        self.final_ln = RMSNorm(embed_dim)
+        self.final_dense = nn.Linear(embed_dim, n_vocab)
 
-"""
-Transformer Decoder Part (GPT, Llama, Gemma, Mistral etc., here Llama, all of them are similar.) 
-"""
-class Decoder(nn.Module):
-    def __init__(self, args: ModelArgs):
-        super().__init__()
-        self.args = args
-        self.vocab_size = args.vocab_size
-        self.n_layers = args.n_layers
-        self.tok_embeddings = nn.Embedding(self.vocab_size, args.dim)
+    def forward(self, tokens):
+        # [B, S]
+        x = self.token_embedding(tokens)
+        # [B, S, C]
+        x = self.positioning(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.final_ln(x)
+        # [B, S, C]
+        x = self.final_dense(x)
+        # [B, S, V]
+        return x
 
-        self.layers = nn.ModuleList()
-        for _ in range(args.n_layers):
-            self.layers.append(DecoderBlock(args))
-
-        self.head_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.head_output = nn.Linear(args.dim, self.vocab_size)
-        self.drop = nn.Dropout(p=0.1)
-
-    def forward(self, tokens: torch.Tensor):
-        # (B, Seq_Len) -> (B, Seq_Len, Dim)
-        h = self.tok_embeddings(tokens)
-        self.drop(h)
-        for layer in self.layers:
-            h = layer(h)
-        h = self.head_norm(h)
-        output = self.head_output(h).float()
-        return output
-    
 ##################################################################################################################################
 import toy
 import tqdm
 
-def get_dataloader(batch_size, n_epochs):
-    dataset = toy.ToyDataset(transform=toy.TokenizerTransform(), n_epochs=n_epochs)
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+def get_dataloader(batch_size, max_seq, n_epochs):
+    dataset = toy.ToyDataset(transform=toy.TokenizerTransform(max_seq=max_seq), n_epochs=n_epochs)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2)
 
 def get_device():
     device = 'cpu'
@@ -166,42 +105,53 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, model_path='toy_llama.pth', batch_size=100):
-    dataloader = get_dataloader(batch_size, n_epochs)
+def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_blocks=8, num_heads=8, dropout=0.1, model_path='llama.pth'):
+    dataloader = get_dataloader(batch_size, max_seq+1, n_epochs)
     device = get_device()
-    net = Decoder(ModelArgs(max_batch_size=batch_size, max_seq_len=5, dim=32, n_layers=4, n_heads=8, device=device, vocab_size=22))
+    net = Llama(n_blocks=n_blocks, n_vocab=n_vocab, max_seq=max_seq, embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
     net = net.to(device)
-    optimizer = torch.optim.AdamW(net.parameters())
+    optimizer = torch.optim.Adam(net.parameters())
     net.train()
-    with tqdm.tqdm(dataloader, colour="#e034f2") as pbar:
-        for o in pbar:
-            x = o[:,:-1].to(device)
-            t = o[:,1:].to(device)
-            y = net(x)
-            loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            pbar.set_description(f"Loss {loss.cpu().item():.4f}")
+    writer = SummaryWriter()
+    for batch_idx, batch in tqdm.tqdm(enumerate(dataloader), total=len(dataloader)):
+        x = batch[:,:-1].to(device)
+        t = batch[:,1:].to(device)
+        y = net(x)
+        loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        # Accuracy
+        truth = t[:,3]
+        actual = torch.argmax(y, dim=2)[:,3]
+        accuracy = (actual == truth).sum().item() / truth.shape[0]
+        # TensorBoard
+        writer.add_scalar("Accuracy", accuracy, batch_idx)
+        writer.add_scalar("Loss", loss.item(), batch_idx)
+        if batch_idx == 0:
+            writer.add_graph(net, input_to_model=x, verbose=False)
+        if batch_idx == n_epochs-1:
+            for pn, p in net.named_parameters():
+                writer.add_histogram(pn, p, global_step=batch_idx)
     torch.save(net.state_dict(), model_path)
 
 ##################################################################################################################################
-import toy
 
-def predict(model_path='toy_llama.pth', user_input='1 + 1 ='):
+def predict(user_input='1 + 1 =', max_seq=5, embed_dim=64, n_vocab=22, n_blocks=8, num_heads=8, dropout=0.1, model_path='llama.pth'):
     device = get_device()
-    net = Decoder(ModelArgs(max_batch_size=1, max_seq_len=5, dim=32, n_layers=4, n_heads=8, device=device, vocab_size=22))
+    net = Llama(n_blocks=n_blocks, n_vocab=n_vocab, max_seq=max_seq, embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
     net.load_state_dict(torch.load(model_path))
+    net = net.to(device)
     tokenizer = toy.ToyTokenizer()
-
+    tokenizer_transform = toy.TokenizerTransform(max_seq=max_seq)
     net.eval()
     with torch.no_grad():
         text = user_input
-        tokens = tokenizer.tokenize(text)
-        x = torch.tensor(tokens, dtype=torch.int)
-        y = net(x).argmax(dim=1)
-        print('DEBUG: ', tokenizer.detokenize(y))
-        char = tokenizer.token2char(y[-1])
+        x = tokenizer_transform(text)
+        x = x.unsqueeze(0).to(device)
+        y = net(x)
+        y = y.argmax(dim=2)[0].cpu()
+        char = tokenizer.token2char(y[3])
         print(text, char)
 
 ##################################################################################################################################
@@ -212,7 +162,7 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python llama.py --train --epochs 100 --predict --input "1 + 1 ="
+      python llama.py --train --epochs 400 --predict --input "1 + 1 ="
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs)
@@ -224,7 +174,7 @@ if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
-    flags.DEFINE_integer("epochs", 2000, "Epochs to train")
+    flags.DEFINE_integer("epochs", 400, "Epochs to train")
     flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
 
     app.run(main)
