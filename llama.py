@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 class RMSNorm(nn.Module):
     '''
     Root Mean Square Layer Normalization, https://arxiv.org/abs/1910.07467
-    Trick: 15.9/14.17 = 1.12X faster than LayerNorm
+    Trick: LLaMA RMSNorm is 15.9/14.17 = 1.12X faster than GPT2 LayerNorm
     '''
     def __init__(self, embed_dim, eps=1e-5):
         super().__init__()
@@ -21,19 +21,31 @@ class RMSNorm(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.weight * x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-class Positioning(nn.Module):
+    
+class RoPE(nn.Module):
     '''
-    Learnable Position Embedding
+    Rotary Position Encoding, https://arxiv.org/abs/2104.09864
+    Trick: RoPE performance is much better than other position encoding.
     '''
-    def __init__(self, embed_dim, max_seq, dropout):
+    def __init__(self, max_seq, embed_dim, theta = 10000.0):
         super().__init__()
-        self.dropout = nn.Dropout(dropout)
-        self.pe = nn.Parameter(torch.randn(1, max_seq, embed_dim))
+        self.register_buffer("freqs_complex", self.pre_calc(max_seq, embed_dim, theta))
+
+    def pre_calc(self, max_seq, embed_dim, theta):
+        theta_numerator = torch.arange(0, embed_dim, 2)
+        theta = 1.0 / (theta ** (theta_numerator / embed_dim))
+        position = torch.arange(max_seq)
+        freqs = torch.outer(position, theta)
+        freqs_complex = torch.polar(torch.ones_like(freqs), freqs)
+        freqs_complex = freqs_complex.unsqueeze(0)
+        return freqs_complex
 
     def forward(self, x):
-        x = x + self.pe
-        return self.dropout(x)
+        x_complex = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2))
+        x_rotated = x_complex * self.freqs_complex
+        x_out = torch.view_as_real(x_rotated)
+        x_out = x_out.reshape(*x.shape)
+        return x_out
 
 class LlamaBlock(nn.Module):
     '''
@@ -73,7 +85,7 @@ class Llama(nn.Module):
     def __init__(self, n_blocks, n_vocab, max_seq, embed_dim, num_heads, dropout):
         super().__init__()
         self.token_embedding = nn.Embedding(n_vocab, embed_dim)
-        self.positioning = Positioning(embed_dim=embed_dim, max_seq=max_seq, dropout=dropout)
+        self.positioning = RoPE(max_seq=max_seq, embed_dim=embed_dim)
         self.blocks = nn.ModuleList()
         for _ in range(n_blocks):
             self.blocks.append(LlamaBlock(embed_dim=embed_dim, num_heads=num_heads, dropout=dropout, max_seq=max_seq))
@@ -166,7 +178,7 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python llama.py --train --epochs 400 --comment "train-comment" --predict --input "1 + 1 ="
+      python llama.py --train --epochs 200 --comment "train-comment" --predict --input "1 + 1 ="
     """
     if FLAGS.train:
         train(n_epochs=FLAGS.epochs, comment=FLAGS.comment)
@@ -178,7 +190,7 @@ if __name__ == '__main__':
     FLAGS = flags.FLAGS
     flags.DEFINE_bool("train", False, "Train the model")
     flags.DEFINE_bool("predict", False, "Predict")
-    flags.DEFINE_integer("epochs", 400, "Epochs to train")
+    flags.DEFINE_integer("epochs", 200, "Epochs to train")
     flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
     flags.DEFINE_string("comment", "", "TensorBoard runs comment")
 
