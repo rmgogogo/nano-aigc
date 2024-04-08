@@ -109,14 +109,14 @@ def get_device():
         device = 'cuda'
     return device
 
-def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_blocks=8, num_heads=8, dropout=0.1, model_path='llama.pth'):
+def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_blocks=8, num_heads=8, dropout=0.1, model_path='llama.pth', comment=''):
     dataloader = get_dataloader(batch_size, max_seq+1, n_epochs)
     device = get_device()
     net = Llama(n_blocks=n_blocks, n_vocab=n_vocab, max_seq=max_seq, embed_dim=embed_dim, num_heads=num_heads, dropout=dropout)
     net = net.to(device)
     optimizer = torch.optim.Adam(net.parameters())
     net.train()
-    writer = SummaryWriter()
+    writer = SummaryWriter(comment=comment)
     for batch_idx, batch in tqdm.tqdm(enumerate(dataloader), total=len(dataloader)):
         x = batch[:,:-1].to(device)
         t = batch[:,1:].to(device)
@@ -166,10 +166,10 @@ from absl import app
 def main(unused_args):
     """
     Samples:
-      python llama.py --train --epochs 400 --predict --input "1 + 1 ="
+      python llama.py --train --epochs 400 --comment "train-comment" --predict --input "1 + 1 ="
     """
     if FLAGS.train:
-        train(n_epochs=FLAGS.epochs)
+        train(n_epochs=FLAGS.epochs, comment=FLAGS.comment)
 
     if FLAGS.predict:
         predict(user_input=FLAGS.input)
@@ -180,5 +180,6 @@ if __name__ == '__main__':
     flags.DEFINE_bool("predict", False, "Predict")
     flags.DEFINE_integer("epochs", 400, "Epochs to train")
     flags.DEFINE_string("input", "1 + 1 =", "Input for prediction")
+    flags.DEFINE_string("comment", "", "TensorBoard runs comment")
 
     app.run(main)
