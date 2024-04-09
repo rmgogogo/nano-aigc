@@ -81,4 +81,5 @@ class TokenizerTransform:
         tokens = self.tokenizer.tokenize(text)
         padding_size = self.max_seq - len(tokens)
         tokens = tokens + [self.tokenizer.eos for _ in range(padding_size)]
-        return torch.tensor(tokens, dtype=torch.int)
+        # OK to use int in MPS, but CUDA requires long.
+        return torch.tensor(tokens, dtype=torch.long)

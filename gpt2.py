@@ -107,7 +107,7 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         x = batch[:,:-1].to(device)
         t = batch[:,1:].to(device)
         y = net(x)
-        loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
+        loss = F.cross_entropy(y.contiguous().view(-1, y.shape[-1]), t.contiguous().view(-1))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -118,8 +118,6 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         # TensorBoard
         writer.add_scalar("Accuracy", accuracy, batch_idx)
         writer.add_scalar("Loss", loss.item(), batch_idx)
-        if batch_idx == 0:
-            writer.add_graph(net, input_to_model=x, verbose=False)
         if batch_idx == n_epochs-1:
             for pn, p in net.named_parameters():
                 writer.add_histogram(pn, p, global_step=batch_idx)

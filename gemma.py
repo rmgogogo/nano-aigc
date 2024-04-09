@@ -6,7 +6,6 @@ No performance difference.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -135,7 +134,8 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         x = batch[:,:-1].to(device)
         t = batch[:,1:].to(device)
         y = net(x)
-        loss = F.cross_entropy(y.view(-1, y.shape[-1]), t.view(-1))
+        # CPU requires contiguous(), but MPS and CUDA OK.
+        loss = F.cross_entropy(y.contiguous().view(-1, y.shape[-1]), t.contiguous().view(-1))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -146,8 +146,9 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         # TensorBoard
         writer.add_scalar("Accuracy", accuracy, batch_idx)
         writer.add_scalar("Loss", loss.item(), batch_idx)
-        if batch_idx == 0:
-            writer.add_graph(net, input_to_model=x, verbose=False)
+        # Can't work in CUDA but OK in MPS
+        # if batch_idx == 0:
+        #     writer.add_graph(net, input_to_model=x, verbose=False)
         if batch_idx == n_epochs-1:
             for pn, p in net.named_parameters():
                 writer.add_histogram(pn, p, global_step=batch_idx)
@@ -184,8 +185,8 @@ def main(unused_args):
     """
     if FLAGS.train:
         # Trick: more block performance always is better, more attention head doesn't help a lot
-        for head in [2, 4, 8, 16]:
-            for block in [2, 4, 8, 16]:
+        for head in [8]: # [2, 4, 8, 16]:
+            for block in [8]: # [2, 4, 8, 16]:
                 comment = f'-h-{head}-b-{block}'
                 train(n_epochs=FLAGS.epochs, comment=comment, num_heads=head, n_blocks=block)
 
