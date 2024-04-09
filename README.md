@@ -124,12 +124,32 @@ Compare the Patches VQ VAE with VQ-VAE or VAE, we would find that image is more 
 
 The codebook is trained and looks good.
 
-## Transformer Decoder Part
+## GPT2
 
-### RoPE
+GPT2 based on a toy dataset (simple math).
 
-![](doc/rope.png)
+```
+python gpt2.py --train --epochs 400 --predict --input "1 + 1 ="
+```
 
-### Llama
+## LLaMA
 
-TODO: finish the nano training
+```
+python llama.py --train --epochs 400 --predict --input "1 + 1 ="
+```
+
+## Gemma
+
+```
+python gemma.py --train --epochs 400 --predict --input "1 + 1 ="
+```
+
+![](doc/gemma.png)
+
+## DiT
+
+Split image into patches, VQ the patch to tokenize the image into tokens. Train GPT to predict the tokens, which finally generates the image. Diffusion Transformer.
+
+https://arxiv.org/pdf/2212.09748.pdf
+
+TODO
