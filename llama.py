@@ -26,6 +26,7 @@ class RoPE(nn.Module):
     '''
     Rotary Position Encoding, https://arxiv.org/abs/2104.09864
     Trick: RoPE performance is much better than other position encoding.
+    Trick: RoPE once or RoPE in each attention's Q and K has no difference.
     '''
     def __init__(self, max_seq, embed_dim, theta = 10000.0):
         super().__init__()
