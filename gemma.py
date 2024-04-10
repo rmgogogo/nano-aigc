@@ -65,6 +65,7 @@ class GemmaBlock(nn.Module):
         self.ff_dropout = nn.Dropout(dropout)
     
     def forward(self, x):
+        # Trick: put FF before attention has no difference. Maybe it's too expensive for people to try.
         res = self.ln1(x)
         res, _ = self.attention(res, res, res, attn_mask=self.attention_mask)
         x = x + res
