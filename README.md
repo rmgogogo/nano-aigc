@@ -148,8 +148,14 @@ python gemma.py --train --epochs 400 --predict --input "1 + 1 ="
 
 ## DiT
 
-Split image into patches, VQ the patch to tokenize the image into tokens. Train GPT to predict the tokens, which finally generates the image. Diffusion Transformer.
+(1)
+
+Split image into patches, VQ the patch to tokenize the image into tokens (distinct) and then get its vector via embedding. Train GPT to predict the tokens, which finally generates the image. Diffusion Transformer.
 
 https://arxiv.org/pdf/2212.09748.pdf
 
-TODO
+(2)
+
+Split image into patches via using Conv to get token vectors directly.
+
+![](doc/dit.png)
