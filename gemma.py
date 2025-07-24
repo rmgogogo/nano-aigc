@@ -135,7 +135,7 @@ def train(n_epochs, batch_size=100, max_seq=5, embed_dim=64, n_vocab=22, n_block
         x = batch[:,:-1].to(device)
         t = batch[:,1:].to(device)
         y = net(x)
-        # CPU requires contiguous(), but MPS and CUDA OK.
+        # contiguous before view to avoid certain backend didn't automatically do it 
         loss = F.cross_entropy(y.contiguous().view(-1, y.shape[-1]), t.contiguous().view(-1))
         optimizer.zero_grad()
         loss.backward()
