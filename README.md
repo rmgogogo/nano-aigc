@@ -167,3 +167,11 @@ python flow_matching.py --train --epochs 10 --predict
 ```
 
 ![](doc/flow_matching.png)
+
+## Conditional Flow Matching
+
+```
+python conditional_flow_matching.py --train --epochs 10 --predict
+```
+
+![](doc/conditional_flow_matching.png)
