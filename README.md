@@ -159,3 +159,11 @@ https://arxiv.org/pdf/2212.09748.pdf
 Split image into patches via using Conv to get token vectors directly.
 
 ![](doc/dit.png)
+
+## Flow Matching
+
+```
+python flow_matching.py --train --epochs 10 --predict
+```
+
+![](doc/flow_matching.png)
