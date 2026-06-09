@@ -175,3 +175,12 @@ python conditional_flow_matching.py --train --epochs 10 --predict
 ```
 
 ![](doc/conditional_flow_matching.png)
+
+## Rectified Flow
+
+```
+python rectified_flow.py --train --reflow --epochs 10 --predict
+```
+
+![](doc/rectified_flow.png)
+
