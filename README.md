@@ -184,3 +184,11 @@ python rectified_flow.py --train --reflow --epochs 10 --predict
 
 ![](doc/rectified_flow.png)
 
+## Rectified Flow on ViT
+
+
+```
+python rectified_flow_enh.py --train --reflow --epochs 10 --predict
+```
+
+![](doc/rectified_flow_vit.png)
