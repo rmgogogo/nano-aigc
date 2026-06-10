@@ -192,3 +192,9 @@ python rectified_flow_enh.py --train --reflow --epochs 10 --predict
 ```
 
 ![](doc/rectified_flow_vit.png)
+
+## JiT
+
+Just image Transformer (Back to Basics: Let Denoising Generative Models Denoise)
+
+![](doc/jit.png)
