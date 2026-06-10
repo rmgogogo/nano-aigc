@@ -1,5 +1,5 @@
 """
-This file is created by Antigravity with Gemini and I.
+This file is created by Antigravity with Gemini and me.
 The agent referenced Tianhong's codes in Github.
 
 Just Image Transformer (JiT) with Elucidated Diffusion Models (EDM).
